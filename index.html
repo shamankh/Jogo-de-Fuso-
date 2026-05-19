@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo de Fuso Horário</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Space Grotesk', sans-serif; background: #f0f4f8; min-height: 100vh; display: flex; justify-content: center; padding: 1rem; }
+    .game { width: 100%; max-width: 1100px; }
+    .header-line { text-align: right; font-size: 12px; color: #778; margin-bottom: .4rem; }
+    .header-line a { color: #556; text-decoration: underline; }
+    .title { font-size: 22px; font-weight: 700; text-align: center; padding: .4rem 0 .2rem; color: #0d1b2a; }
+    .subtitle { font-size: 13px; text-align: center; color: #556; margin-bottom: .15rem; }
+    .map-note { font-size: 10px; text-align: center; color: #aaa; font-style: italic; margin-bottom: .6rem; }
+    #map-wrap { width: 100%; border-radius: 10px; border: 1px solid #ccd; box-shadow: 0 2px 12px rgba(0,0,0,.1); overflow: hidden; }
+    #world-map { display: block; width: 100%; }
+    .tz-band { opacity: .28; }
+    @keyframes pulse-a { 0%,100%{opacity:.80} 50%{opacity:.97} }
+    @keyframes pulse-b { 0%,100%{opacity:.76} 50%{opacity:.94} }
+    .tz-band.active-a { animation: pulse-a 1s ease-in-out infinite; }
+    .tz-band.active-b { animation: pulse-b 1s ease-in-out infinite .5s; }
+    .tz-band.transit  { opacity: .42; }
+    .cards { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; margin: .9rem 0 .7rem; }
+    .city-card { background: #fff; border-radius: 10px; border: 1px solid #dde; padding: .7rem .9rem; display: flex; flex-direction: column; gap: 3px; }
+    .city-card .lbl  { font-size: 10px; color: #778; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+    .city-card .name { font-size: 15px; font-weight: 700; color: #0d1b2a; }
+    .city-card .gmt  { font-size: 11px; color: #778; }
+    .city-card .hora { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+    .city-card.base .hora { color: #1565c0; }
+    .city-card.dest .hora { color: #6a1b9a; }
+    .arrow-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #778; font-size: 20px; }
+    .diff-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #dbeafe; color: #1e40af; white-space: nowrap; }
+    .inputs-row { display: flex; align-items: center; gap: 6px; margin: .2rem 0; }
+    .inputs-row input { width: 58px; font-size: 23px; font-weight: 700; text-align: center; border: 1px solid #ccd; border-radius: 8px; padding: 5px 3px; background: #fff; color: #6a1b9a; font-family: 'Space Grotesk', sans-serif; }
+    .inputs-row input:focus { outline: none; border-color: #6a1b9a; }
+    .inputs-row .sep { font-size: 26px; font-weight: 700; color: #556; }
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; }
+    .formula-box { background: #f8f9ff; border: 1px solid #dde; border-radius: 10px; padding: .7rem .9rem; margin: .5rem 0; font-size: 12px; color: #445; line-height: 1.75; }
+    .formula-box strong { color: #0d1b2a; font-weight: 700; }
+    .formula-box .fs { font-family: monospace; background: #eef0f8; border-radius: 4px; padding: 1px 6px; font-size: 11px; }
+    .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: .6rem 0; }
+    .btn { padding: .65rem 1rem; border-radius: 9px; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: opacity .15s, transform .1s; }
+    .btn:active { transform: scale(.97); } .btn:hover { opacity: .86; }
+    .btn-check { background: #1565c0; color: #fff; } .btn-new { background: #6a1b9a; color: #fff; }
+    .msg { border-radius: 10px; padding: .7rem .9rem; text-align: center; font-size: 13px; font-weight: 500; min-height: 44px; display: flex; align-items: center; justify-content: center; margin: .25rem 0; }
+    .msg.ok   { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .msg.err  { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .msg.warn { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+    .msg.empty{ background: transparent; border: 1px solid transparent; }
+    .score-row { display: flex; justify-content: center; gap: 24px; font-size: 12px; color: #667; margin: .35rem 0; }
+    .score-row span { font-weight: 700; color: #0d1b2a; }
+    .footer-line { text-align: center; font-size: 11px; color: #aaa; margin-top: 1.5rem; padding-bottom: .5rem; }
+    .footer-line a { color: #888; text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="game">
+  <div class="header-line">
+    Prof. Me. Christopher De Andrade Cardoso — <a href="https://inspira.prof/" target="_blank">inspira.prof</a>
+  </div>
+  <div class="title">🌍 Jogo de Fuso Horário</div>
+  <div class="subtitle">Veja o horário na cidade base e descubra que horas são na cidade destino!</div>
+  <div class="map-note">Mapa-Múndi meramente ilustrativo (por conta da curvatura do planeta)</div>
+
+  <div id="map-wrap">
+    <svg id="world-map" viewBox="0 0 1000 480" xmlns="http://www.w3.org/2000/svg" width="100%">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+        <clipPath id="mapclip"><rect x="0" y="0" width="1000" height="448"/></clipPath>
+      </defs>
+
+      <!-- Background ocean -->
+      <rect width="1000" height="448" fill="#cde4f0"/>
+
+      <!-- TZ bands -->
+      <g id="tz-bands" clip-path="url(#mapclip)"></g>
+
+      <!-- Latitude reference lines -->
+      <g stroke="#9bb8cc" stroke-width=".4" stroke-dasharray="3 4" opacity=".6" clip-path="url(#mapclip)">
+        <!-- Equator lat=0 → y=224 -->
+        <line x1="0" y1="224" x2="1000" y2="224"/>
+        <!-- Tropic of Cancer lat=23.5 → y=165 -->
+        <line x1="0" y1="165" x2="1000" y2="165"/>
+        <!-- Tropic of Capricorn lat=-23.5 → y=283 -->
+        <line x1="0" y1="283" x2="1000" y2="283"/>
+        <!-- Arctic Circle lat=66.5 → y=53 -->
+        <line x1="0" y1="53" x2="1000" y2="53"/>
+        <!-- Antarctic Circle lat=-66.5 → y=395 -->
+        <line x1="0" y1="395" x2="1000" y2="395"/>
+      </g>
+
+      <!-- Lat labels -->
+      <g font-family="'Space Grotesk',sans-serif" font-size="7" fill="#7799aa" opacity=".8">
+        <text x="4" y="222">Equador</text>
+        <text x="4" y="163">Trópico de Câncer</text>
+        <text x="4" y="281">Trópico de Capricórnio</text>
+        <text x="4" y="51">Círculo Ártico</text>
+      </g>
+
+      <!-- TZ meridian lines -->
+      <g id="tz-lines" clip-path="url(#mapclip)"></g>
+
+      <!-- Prime Meridian bold -->
+      <line x1="500" y1="0" x2="500" y2="448" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="6 4" opacity=".8"/>
+
+      <!-- Connection arc between cities -->
+      <path id="connect-path" fill="none" stroke="#e74c3c" stroke-width="1.8" stroke-dasharray="7 5" opacity="0" marker-end="url(#arr)" clip-path="url(#mapclip)"/>
+
+      <!-- City dots + labels -->
+      <g id="city-layer" clip-path="url(#mapclip)"></g>
+
+      <!-- TZ bar -->
+      <g id="tz-bar"></g>
+    </svg>
+  </div>
+
+  <div class="cards">
+    <div class="city-card base">
+      <span class="lbl">Cidade Base</span>
+      <span class="name" id="nomeA">—</span>
+      <span class="hora" id="horaA">--:--</span>
+      <span class="gmt" id="gmtA"></span>
+    </div>
+    <div class="arrow-mid">
+      <div>→</div>
+      <div class="diff-badge" id="diff-badge">? fusos</div>
+    </div>
+    <div class="city-card dest">
+      <span class="lbl">Cidade Destino</span>
+      <span class="name" id="nomeB">—</span>
+      <div class="inputs-row">
+        <input type="number" id="horaB" min="0" max="23" placeholder="hh">
+        <span class="sep">:</span>
+        <input type="number" id="minutoB" min="0" max="59" placeholder="mm">
+      </div>
+      <span class="gmt" id="gmtB"></span>
+    </div>
+  </div>
+
+  <div class="formula-box" id="formula-box"></div>
+  <div class="btns">
+    <button class="btn btn-check" id="checkBtn">Verificar ✓</button>
+    <button class="btn btn-new"   id="newBtn">Nova pergunta →</button>
+  </div>
+  <div class="msg empty" id="msg"></div>
+  <div class="score-row">
+    <div>Acertos: <span id="sc-ok">0</span></div>
+    <div>Erros: <span id="sc-err">0</span></div>
+    <div>Total: <span id="sc-tot">0</span></div>
+  </div>
+  <p class="footer-line">
+    Prof. Me. Christopher De Andrade Cardoso —
+    <a href="https://inspira.prof/" target="_blank">inspira.prof</a>
+  </p>
+</div>
+
+<script>
+// ── PROJECTION ─────────────────────────────────────────────
+// equirectangular: lon -180..+180 → x 0..1000 | lat +90..-90 → y 0..448
+const W=1000, H=448, BAR_H=32;
+function lonToX(lon){ return (lon+180)/360*W; }
+function latToY(lat){ return (90-lat)/180*H; }
+function gmtBand(gmt){ return Math.min(23,Math.max(0,Math.round(gmt+12))); }
+const TZ_W=W/24;
+
+const TZ_PALETTE=[
+  '#b39ddb','#ce93d8','#80cbc4','#a5d6a7','#fff176','#ffe082',
+  '#ffcc80','#ef9a9a','#f48fb1','#9fa8da','#80deea','#a5d6a7',
+  '#fff176','#a5d6a7','#80cbc4','#ce93d8','#b39ddb','#9fa8da',
+  '#ffe082','#ffcc80','#ef9a9a','#80deea','#f48fb1','#fff176'
+];
+
+// ── CITY DATABASE — nome, gmt oficial (UTC sem DST), lat, lon ──
+const CIDADES=[
+  // Américas
+  {nome:"Ottawa",           gmt:-5,    lat:45.4,  lon:-75.7},
+  {nome:"Washington",       gmt:-5,    lat:38.9,  lon:-77.0},
+  {nome:"Nova York",        gmt:-5,    lat:40.7,  lon:-74.0},
+  {nome:"Chicago",          gmt:-6,    lat:41.9,  lon:-87.6},
+  {nome:"Los Angeles",      gmt:-8,    lat:34.1,  lon:-118.2},
+  {nome:"Anchorage",        gmt:-9,    lat:61.2,  lon:-149.9},
+  {nome:"Honolulu",         gmt:-10,   lat:21.3,  lon:-157.8},
+  {nome:"Cidade do México", gmt:-6,    lat:19.4,  lon:-99.1},
+  {nome:"Havana",           gmt:-5,    lat:23.1,  lon:-82.4},
+  {nome:"Caracas",          gmt:-4,    lat:10.5,  lon:-66.9},
+  {nome:"Bogotá",           gmt:-5,    lat:4.7,   lon:-74.1},
+  {nome:"Lima",             gmt:-5,    lat:-12.0, lon:-77.0},
+  {nome:"Brasília",         gmt:-3,    lat:-15.8, lon:-47.9},
+  {nome:"São Paulo",        gmt:-3,    lat:-23.5, lon:-46.6},
+  {nome:"Rio de Janeiro",   gmt:-3,    lat:-22.9, lon:-43.2},
+  {nome:"Buenos Aires",     gmt:-3,    lat:-34.6, lon:-58.4},
+  {nome:"Santiago",         gmt:-4,    lat:-33.5, lon:-70.7},
+  {nome:"Montevidéu",       gmt:-3,    lat:-34.9, lon:-56.2},
+  {nome:"Assunção",         gmt:-4,    lat:-25.3, lon:-57.6},
+  {nome:"La Paz",           gmt:-4,    lat:-16.5, lon:-68.1},
+  {nome:"Quito",            gmt:-5,    lat:-0.2,  lon:-78.5},
+  {nome:"Manaus",           gmt:-4,    lat:-3.1,  lon:-60.0},
+  // Europa
+  {nome:"Lisboa",           gmt:0,     lat:38.7,  lon:-9.1},
+  {nome:"Londres",          gmt:0,     lat:51.5,  lon:-0.1},
+  {nome:"Dublin",           gmt:0,     lat:53.3,  lon:-6.3},
+  {nome:"Reiquiavique",     gmt:0,     lat:64.1,  lon:-21.9},
+  {nome:"Madrid",           gmt:1,     lat:40.4,  lon:-3.7},
+  {nome:"Paris",            gmt:1,     lat:48.9,  lon:2.3},
+  {nome:"Oslo",             gmt:1,     lat:59.9,  lon:10.7},
+  {nome:"Estocolmo",        gmt:1,     lat:59.3,  lon:18.1},
+  {nome:"Berlim",           gmt:1,     lat:52.5,  lon:13.4},
+  {nome:"Roma",             gmt:1,     lat:41.9,  lon:12.5},
+  {nome:"Varsóvia",         gmt:1,     lat:52.2,  lon:21.0},
+  {nome:"Viena",            gmt:1,     lat:48.2,  lon:16.4},
+  {nome:"Amsterdã",         gmt:1,     lat:52.4,  lon:4.9},
+  {nome:"Bruxelas",         gmt:1,     lat:50.8,  lon:4.4},
+  {nome:"Zurique",          gmt:1,     lat:47.4,  lon:8.5},
+  {nome:"Copenhague",       gmt:1,     lat:55.7,  lon:12.6},
+  {nome:"Atenas",           gmt:2,     lat:37.9,  lon:23.7},
+  {nome:"Bucareste",        gmt:2,     lat:44.4,  lon:26.1},
+  {nome:"Helsinque",        gmt:2,     lat:60.2,  lon:25.0},
+  {nome:"Kiev",             gmt:2,     lat:50.5,  lon:30.5},
+  {nome:"Riga",             gmt:2,     lat:56.9,  lon:24.1},
+  {nome:"Moscou",           gmt:3,     lat:55.8,  lon:37.6},
+  {nome:"São Petersburgo",  gmt:3,     lat:59.9,  lon:30.3},
+  {nome:"Minsk",            gmt:3,     lat:53.9,  lon:27.6},
+  // África
+  {nome:"Casablanca",       gmt:0,     lat:33.6,  lon:-7.6},
+  {nome:"Dacar",            gmt:0,     lat:14.7,  lon:-17.4},
+  {nome:"Abidjan",          gmt:0,     lat:5.3,   lon:-4.0},
+  {nome:"Acra",             gmt:0,     lat:5.6,   lon:-0.2},
+  {nome:"Bamaco",           gmt:0,     lat:12.6,  lon:-8.0},
+  {nome:"Argel",            gmt:1,     lat:36.7,  lon:3.1},
+  {nome:"Tunis",            gmt:1,     lat:36.8,  lon:10.2},
+  {nome:"Lagos",            gmt:1,     lat:6.5,   lon:3.4},
+  {nome:"Luanda",           gmt:1,     lat:-8.8,  lon:13.2},
+  {nome:"Kinshasa",         gmt:1,     lat:-4.3,  lon:15.3},
+  {nome:"Trípoli",          gmt:2,     lat:32.9,  lon:13.2},
+  {nome:"Cairo",            gmt:2,     lat:30.1,  lon:31.2},
+  {nome:"Cartum",           gmt:3,     lat:15.5,  lon:32.5},
+  {nome:"Adis Abeba",       gmt:3,     lat:9.0,   lon:38.7},
+  {nome:"Nairóbi",          gmt:3,     lat:-1.3,  lon:36.8},
+  {nome:"Dar es Salaam",    gmt:3,     lat:-6.8,  lon:39.3},
+  {nome:"Mogadíscio",       gmt:3,     lat:2.0,   lon:45.3},
+  {nome:"Johannesburgo",    gmt:2,     lat:-26.2, lon:28.0},
+  {nome:"Pretória",         gmt:2,     lat:-25.7, lon:28.2},
+  {nome:"Harare",           gmt:2,     lat:-17.8, lon:31.1},
+  {nome:"Maputo",           gmt:2,     lat:-25.9, lon:32.6},
+  {nome:"Antananarivo",     gmt:3,     lat:-18.9, lon:47.5},
+  {nome:"Lusaká",           gmt:2,     lat:-15.4, lon:28.3},
+  // Oriente Médio
+  {nome:"Ancara",           gmt:3,     lat:39.9,  lon:32.9},
+  {nome:"Istambul",         gmt:3,     lat:41.0,  lon:29.0},
+  {nome:"Bagdá",            gmt:3,     lat:33.3,  lon:44.4},
+  {nome:"Riade",            gmt:3,     lat:24.7,  lon:46.7},
+  {nome:"Kuwait",           gmt:3,     lat:29.4,  lon:47.9},
+  {nome:"Doha",             gmt:3,     lat:25.3,  lon:51.5},
+  {nome:"Abu Dhabi",        gmt:4,     lat:24.5,  lon:54.4},
+  {nome:"Dubai",            gmt:4,     lat:25.2,  lon:55.3},
+  {nome:"Muscat",           gmt:4,     lat:23.6,  lon:58.6},
+  {nome:"Teerã",            gmt:3.5,   lat:35.7,  lon:51.4},
+  {nome:"Beirute",          gmt:2,     lat:33.9,  lon:35.5},
+  {nome:"Amã",              gmt:2,     lat:31.9,  lon:35.9},
+  {nome:"Sanaa",            gmt:3,     lat:15.4,  lon:44.2},
+  // Ásia Central
+  {nome:"Tbilisi",          gmt:4,     lat:41.7,  lon:44.8},
+  {nome:"Baku",             gmt:4,     lat:40.4,  lon:49.9},
+  {nome:"Tashkent",         gmt:5,     lat:41.3,  lon:69.3},
+  {nome:"Astana",           gmt:6,     lat:51.2,  lon:71.4},
+  {nome:"Almaty",           gmt:6,     lat:43.3,  lon:76.9},
+  {nome:"Cabul",            gmt:4.5,   lat:34.5,  lon:69.2},
+  {nome:"Bishkek",          gmt:6,     lat:42.9,  lon:74.6},
+  {nome:"Dushambe",         gmt:5,     lat:38.6,  lon:68.8},
+  // Sul da Ásia
+  {nome:"Islamabad",        gmt:5,     lat:33.7,  lon:73.1},
+  {nome:"Karachi",          gmt:5,     lat:24.9,  lon:67.0},
+  {nome:"Nova Delhi",       gmt:5.5,   lat:28.6,  lon:77.2},
+  {nome:"Mumbai",           gmt:5.5,   lat:19.1,  lon:72.9},
+  {nome:"Calcutá",          gmt:5.5,   lat:22.6,  lon:88.4},
+  {nome:"Colombo",          gmt:5.5,   lat:6.9,   lon:79.9},
+  {nome:"Katmandu",         gmt:5.75,  lat:27.7,  lon:85.3},
+  {nome:"Daca",             gmt:6,     lat:23.7,  lon:90.4},
+  // Sudeste Asiático
+  {nome:"Rangum",           gmt:6.5,   lat:16.9,  lon:96.2},
+  {nome:"Bangkok",          gmt:7,     lat:13.8,  lon:100.5},
+  {nome:"Phnom Penh",       gmt:7,     lat:11.6,  lon:104.9},
+  {nome:"Vientiane",        gmt:7,     lat:18.0,  lon:102.6},
+  {nome:"Hanói",            gmt:7,     lat:21.0,  lon:105.8},
+  {nome:"Ho Chi Minh",      gmt:7,     lat:10.8,  lon:106.7},
+  {nome:"Jacarta",          gmt:7,     lat:-6.2,  lon:106.8},
+  {nome:"Kuala Lumpur",     gmt:8,     lat:3.1,   lon:101.7},
+  {nome:"Singapura",        gmt:8,     lat:1.3,   lon:103.8},
+  {nome:"Manila",           gmt:8,     lat:14.6,  lon:121.0},
+  {nome:"Díli",             gmt:9,     lat:-8.6,  lon:125.6},
+  // Leste Asiático
+  {nome:"Pequim",           gmt:8,     lat:39.9,  lon:116.4},
+  {nome:"Xangai",           gmt:8,     lat:31.2,  lon:121.5},
+  {nome:"Hong Kong",        gmt:8,     lat:22.3,  lon:114.2},
+  {nome:"Taipei",           gmt:8,     lat:25.0,  lon:121.5},
+  {nome:"Ulaanbaatar",      gmt:8,     lat:47.9,  lon:106.9},
+  {nome:"Seul",             gmt:9,     lat:37.6,  lon:127.0},
+  {nome:"Tóquio",           gmt:9,     lat:35.7,  lon:139.7},
+  {nome:"Osaka",            gmt:9,     lat:34.7,  lon:135.5},
+  {nome:"Pyongyang",        gmt:9,     lat:39.0,  lon:125.8},
+  // Rússia
+  {nome:"Moscou",           gmt:3,     lat:55.8,  lon:37.6},
+  {nome:"Ecaterimburgo",    gmt:5,     lat:56.8,  lon:60.6},
+  {nome:"Omsk",             gmt:6,     lat:55.0,  lon:73.4},
+  {nome:"Novosibirsk",      gmt:7,     lat:55.0,  lon:82.9},
+  {nome:"Iacutsk",          gmt:9,     lat:62.0,  lon:129.7},
+  {nome:"Vladivostok",      gmt:10,    lat:43.1,  lon:131.9},
+  {nome:"Magadan",          gmt:11,    lat:59.6,  lon:150.8},
+  // Oceania
+  {nome:"Port Moresby",     gmt:10,    lat:-9.5,  lon:147.2},
+  {nome:"Brisbane",         gmt:10,    lat:-27.5, lon:153.0},
+  {nome:"Sydney",           gmt:10,    lat:-33.9, lon:151.2},
+  {nome:"Camberra",         gmt:10,    lat:-35.3, lon:149.1},
+  {nome:"Melbourne",        gmt:10,    lat:-37.8, lon:145.0},
+  {nome:"Perth",            gmt:8,     lat:-31.9, lon:115.9},
+  {nome:"Adelaide",         gmt:9.5,   lat:-34.9, lon:138.6},
+  {nome:"Darwin",           gmt:9.5,   lat:-12.5, lon:130.8},
+  {nome:"Wellington",       gmt:12,    lat:-41.3, lon:174.8},
+  {nome:"Auckland",         gmt:12,    lat:-36.9, lon:174.8},
+  {nome:"Suva",             gmt:12,    lat:-18.1, lon:178.4},
+  {nome:"Honiara",          gmt:11,    lat:-9.4,  lon:160.0},
+  {nome:"Nuku'alofa",       gmt:13,    lat:-21.1, lon:-175.2},
+];
+
+let cidA,cidB,idxA,idxB,horaA,minA,resH,resM;
+let scOk=0,scErr=0,scTot=0;
+
+function initMap(){
+  const bandsG=document.getElementById('tz-bands');
+  const linesG=document.getElementById('tz-lines');
+  const barG=document.getElementById('tz-bar');
+
+  for(let i=0;i<24;i++){
+    const gmt=i-12;
+    const x=lonToX(gmt*15);
+
+    // band
+    const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x',x); r.setAttribute('y',0);
+    r.setAttribute('width',TZ_W+0.5); r.setAttribute('height',H);
+    r.setAttribute('fill',TZ_PALETTE[i]);
+    r.setAttribute('id',`tz_${i}`); r.setAttribute('class','tz-band');
+    bandsG.appendChild(r);
+
+    // meridian line
+    if(i>0){
+      const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+      ln.setAttribute('x1',x);ln.setAttribute('y1',0);
+      ln.setAttribute('x2',x);ln.setAttribute('y2',H);
+      ln.setAttribute('stroke','#7799bb');ln.setAttribute('stroke-width','.35');ln.setAttribute('opacity','.55');
+      linesG.appendChild(ln);
+    }
+
+    // bar rect
+    const bx=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    bx.setAttribute('x',x); bx.setAttribute('y',H-BAR_H);
+    bx.setAttribute('width',TZ_W+0.5); bx.setAttribute('height',BAR_H);
+    bx.setAttribute('fill',TZ_PALETTE[i]);
+    bx.setAttribute('stroke','#fff'); bx.setAttribute('stroke-width','.5');
+    barG.appendChild(bx);
+
+    // bar label
+    const label=gmt===0?'0':(gmt>0?`+${gmt}`:`${gmt}`);
+    const tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+    tx.setAttribute('x',x+TZ_W/2); tx.setAttribute('y',H-BAR_H+20);
+    tx.setAttribute('text-anchor','middle');
+    tx.setAttribute('font-family',"'Space Grotesk',sans-serif");
+    tx.setAttribute('font-size','9.5'); tx.setAttribute('font-weight','700');
+    tx.setAttribute('fill','#1a1a2e');
+    tx.textContent=label; barG.appendChild(tx);
+  }
+
+  // Greenwich red tick on bar
+  const gl=document.createElementNS('http://www.w3.org/2000/svg','line');
+  gl.setAttribute('x1',500);gl.setAttribute('y1',H-BAR_H-4);
+  gl.setAttribute('x2',500);gl.setAttribute('y2',H);
+  gl.setAttribute('stroke','#c0392b');gl.setAttribute('stroke-width','2');
+  barG.appendChild(gl);
+
+  // Cities — plotted via real lon/lat
+  const cityG=document.getElementById('city-layer');
+  CIDADES.forEach((c,i)=>{
+    // Plot X at center of the city's GMT band, not real longitude
+    // This ensures every city dot sits inside its correct colored band
+    const cx = lonToX(c.gmt * 15);
+    const cy=latToY(c.lat);
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('id',`city_${i}`);
+
+    const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circle.setAttribute('cx',cx); circle.setAttribute('cy',cy);
+    circle.setAttribute('r','2.8');
+    circle.setAttribute('fill','#1a2a3a');
+    circle.setAttribute('stroke','#fff'); circle.setAttribute('stroke-width','1');
+
+    const text=document.createElementNS('http://www.w3.org/2000/svg','text');
+    // anchor based on GMT: positive (east) → label to the right, negative (west) → label to the left
+    const goLeft = c.gmt >= 0;
+    text.setAttribute('x', goLeft ? cx+5 : cx-5);
+    text.setAttribute('y', cy+3);
+    text.setAttribute('text-anchor', goLeft ? 'start' : 'end');
+    text.setAttribute('font-family',"'Space Grotesk',sans-serif");
+    text.setAttribute('font-size','7'); text.setAttribute('font-weight','600');
+    text.setAttribute('fill','#0d1b2a');
+    text.textContent=c.nome;
+
+    g.appendChild(circle); g.appendChild(text);
+    cityG.appendChild(g);
+  });
+}
+
+function highlightBands(a,b){
+  for(let i=0;i<24;i++){
+    const el=document.getElementById(`tz_${i}`);
+    el.style.fill=TZ_PALETTE[i]; el.style.opacity='.28';
+    el.classList.remove('active-a','active-b','transit');
+  }
+  const iA=gmtBand(a.gmt), iB=gmtBand(b.gmt);
+  const lo=Math.min(iA,iB), hi=Math.max(iA,iB);
+  for(let i=lo;i<=hi;i++){
+    const el=document.getElementById(`tz_${i}`);
+    if(i===iA){ el.style.fill='#1565c0'; el.style.opacity='.78'; el.classList.add('active-a'); }
+    else if(i===iB){ el.style.fill='#6a1b9a'; el.style.opacity='.78'; el.classList.add('active-b'); }
+    else { el.style.fill='#e67e22'; el.style.opacity='.42'; el.classList.add('transit'); }
+  }
+}
+
+function highlightCities(ia,ib){
+  CIDADES.forEach((c,i)=>{
+    const g=document.getElementById(`city_${i}`); if(!g) return;
+    const circ=g.querySelector('circle'), txt=g.querySelector('text');
+    if(i===ia){
+      circ.setAttribute('fill','#1565c0'); circ.setAttribute('r','5.5');
+      circ.setAttribute('stroke-width','1.5');
+      txt.setAttribute('fill','#0d47a1'); txt.setAttribute('font-weight','800'); txt.setAttribute('font-size','9');
+    } else if(i===ib){
+      circ.setAttribute('fill','#6a1b9a'); circ.setAttribute('r','5.5');
+      circ.setAttribute('stroke-width','1.5');
+      txt.setAttribute('fill','#4a148c'); txt.setAttribute('font-weight','800'); txt.setAttribute('font-size','9');
+    } else {
+      circ.setAttribute('fill','#1a2a3a'); circ.setAttribute('r','2.8');
+      circ.setAttribute('stroke-width','1');
+      txt.setAttribute('fill','#0d1b2a'); txt.setAttribute('font-weight','600'); txt.setAttribute('font-size','7');
+    }
+  });
+
+  const xA=lonToX(CIDADES[ia].gmt*15), yA=latToY(CIDADES[ia].lat);
+  const xB=lonToX(CIDADES[ib].gmt*15), yB=latToY(CIDADES[ib].lat);
+  const mx=(xA+xB)/2, my=Math.min(yA,yB)-42;
+  const path=document.getElementById('connect-path');
+  path.setAttribute('d',`M${xA},${yA} Q${mx},${my} ${xB},${yB}`);
+  path.setAttribute('opacity','1');
+  clearInterval(window._pAnim); let off=0;
+  window._pAnim=setInterval(()=>{ off-=1; path.setAttribute('stroke-dashoffset',off); },38);
+}
+
+function fmt(h,m){ return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+function fmtG(g){
+  const neg=g<0,ag=Math.abs(g),h=Math.floor(ag),m=Math.round((ag-h)*60);
+  return m>0?`GMT${neg?'-':'+'}${h}:${String(m).padStart(2,'0')}`:`GMT${neg?'-':'+'}${h}`;
+}
+function calcResp(){
+  let tot=horaA*60+minA+(cidB.gmt-cidA.gmt)*60;
+  while(tot<0)tot+=1440; while(tot>=1440)tot-=1440;
+  resH=Math.floor(tot/60); resM=Math.round(tot%60);
+}
+function mesmoHem(a,b){ return (a.gmt>=0&&b.gmt>=0)||(a.gmt<=0&&b.gmt<=0); }
+function renderFormula(a,b){
+  const diff=Math.abs(b.gmt-a.gmt);
+  const fusos=diff%1===0?diff:diff.toFixed(2).replace(/\.?0+$/,'');
+  const dir=b.gmt>a.gmt?'→ leste (soma horas)':'→ oeste (subtrai horas)';
+  let html='';
+  if(mesmoHem(a,b)){
+    const dg=Math.abs(Math.round(b.gmt*15)-Math.round(a.gmt*15));
+    html=`<strong>📐 Mesmo hemisfério</strong> — subtraia o menor fuso do maior, divida por 15°<br>
+    <span class="fs">|${Math.round(b.gmt*15)}°| − |${Math.round(a.gmt*15)}°| = ${dg}°</span>
+    &nbsp;÷ 15 = <strong>${fusos} fuso(s) de diferença</strong> &nbsp;${dir}`;
+  } else {
+    const sg=Math.abs(Math.round(b.gmt*15))+Math.abs(Math.round(a.gmt*15));
+    html=`<strong>📐 Hemisférios diferentes</strong> — some os valores absolutos, divida por 15°<br>
+    <span class="fs">|${Math.round(b.gmt*15)}°| + |${Math.round(a.gmt*15)}°| = ${sg}°</span>
+    &nbsp;÷ 15 = <strong>${fusos} fuso(s)</strong> &nbsp;${dir}`;
+  }
+  document.getElementById('formula-box').innerHTML=html;
+  document.getElementById('diff-badge').textContent=`${fusos} fuso(s)`;
+}
+function setMsg(t,c){ const e=document.getElementById('msg'); e.innerHTML=t; e.className=`msg ${c}`; }
+
+function novaPergunta(){
+  clearInterval(window._pAnim);
+  document.getElementById('connect-path').setAttribute('opacity','0');
+  let ia,ib;
+  do{ ia=Math.floor(Math.random()*CIDADES.length); ib=Math.floor(Math.random()*CIDADES.length); }
+  while(ia===ib||CIDADES[ia].gmt===CIDADES[ib].gmt);
+  idxA=ia;idxB=ib;cidA=CIDADES[ia];cidB=CIDADES[ib];
+  horaA=Math.floor(Math.random()*24); minA=Math.floor(Math.random()*60);
+  calcResp();
+  document.getElementById('nomeA').textContent=cidA.nome;
+  document.getElementById('nomeB').textContent=cidB.nome;
+  document.getElementById('horaA').textContent=fmt(horaA,minA);
+  document.getElementById('gmtA').textContent=fmtG(cidA.gmt);
+  document.getElementById('gmtB').textContent=fmtG(cidB.gmt);
+  document.getElementById('horaB').value='';
+  document.getElementById('minutoB').value='';
+  setMsg('','empty');
+  highlightBands(cidA,cidB);
+  highlightCities(idxA,idxB);
+  renderFormula(cidA,cidB);
+}
+function verificar(){
+  const h=parseInt(document.getElementById('horaB').value,10);
+  const m=parseInt(document.getElementById('minutoB').value,10);
+  if(isNaN(h)||isNaN(m)||h<0||h>23||m<0||m>59){ setMsg('Preencha um horário válido (hh:mm)','warn'); return; }
+  scTot++;
+  if(h===resH&&m===resM){ scOk++; setMsg(`✅ <strong>Correto!</strong> São <strong>${fmt(resH,resM)}</strong> em ${cidB.nome}.`,'ok'); }
+  else { scErr++; setMsg(`❌ <strong>Incorreto.</strong> Em <strong>${cidB.nome}</strong> seria <strong>${fmt(resH,resM)}</strong>.`,'err'); }
+  document.getElementById('sc-ok').textContent=scOk;
+  document.getElementById('sc-err').textContent=scErr;
+  document.getElementById('sc-tot').textContent=scTot;
+}
+document.getElementById('checkBtn').onclick=verificar;
+document.getElementById('newBtn').onclick=novaPergunta;
+document.addEventListener('keydown',e=>{ if(e.key==='Enter') verificar(); });
+initMap(); novaPergunta();
+</script>
+</body>
+</html>
